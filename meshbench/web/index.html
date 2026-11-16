@@ -1,0 +1,561 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>meshbench — offline protocol devnet</title>
+<style>
+  :root{
+    --bg:#07090b; --panel:#0c0f13; --panel-2:#0a0d10;
+    --line:rgba(255,255,255,.075); --line-2:rgba(255,255,255,.12);
+    --text:#e8eef2; --dim:#7d8b96; --dimmer:#54626d;
+    --mint:#6ef0b8; --cyan:#5ad1ff; --amber:#ffb454; --violet:#c9a2ff; --red:#ff6b6b;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Inter","Segoe UI",sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;background:
+      radial-gradient(1200px 700px at 18% -10%, rgba(110,240,184,.055), transparent 60%),
+      radial-gradient(900px 600px at 100% 0%, rgba(90,209,255,.04), transparent 55%),
+      var(--bg);
+    color:var(--text);font-family:var(--sans);font-size:13px;
+    -webkit-font-smoothing:antialiased;overflow:hidden;
+  }
+  .app{height:100vh;display:grid;grid-template-rows:52px 1fr 168px;grid-template-columns:1fr 392px;
+       grid-template-areas:"head head" "stage ledger" "feed feed";}
+  /* ---------------------------------------------------------- header */
+  header{grid-area:head;display:flex;align-items:center;gap:18px;padding:0 18px;
+         border-bottom:1px solid var(--line);background:rgba(8,10,13,.7);backdrop-filter:blur(8px)}
+  .brand{display:flex;align-items:baseline;gap:9px}
+  .brand .mark{width:8px;height:8px;border-radius:50%;background:var(--mint);
+               box-shadow:0 0 0 4px rgba(110,240,184,.10),0 0 18px rgba(110,240,184,.55)}
+  .brand b{font-weight:600;letter-spacing:-.015em;font-size:14px}
+  .brand span{color:var(--dimmer);font-size:11px;letter-spacing:.16em;text-transform:uppercase}
+  .meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .chip{font-family:var(--mono);font-size:11px;color:var(--dim);border:1px solid var(--line);
+        padding:4px 8px;border-radius:6px;background:rgba(255,255,255,.02);white-space:nowrap}
+  .chip b{color:var(--text);font-weight:500}
+  .chip.live{color:var(--mint);border-color:rgba(110,240,184,.22);background:rgba(110,240,184,.05)}
+  .chip.live .dot{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--mint);
+                  margin-right:6px;vertical-align:1px;animation:pulse 2s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  .spacer{flex:1}
+  .ghost{font-family:var(--mono);font-size:11px;color:var(--dim);background:transparent;
+         border:1px solid var(--line);border-radius:6px;padding:5px 9px;cursor:pointer;transition:.15s}
+  .ghost:hover{color:var(--text);border-color:var(--line-2);background:rgba(255,255,255,.04)}
+
+  /* ----------------------------------------------------------- stage */
+  .stage{grid-area:stage;position:relative;display:grid;grid-template-rows:1fr auto;min-width:0}
+  #topo{display:block;width:100%;height:100%;cursor:crosshair}
+  .overlay{position:absolute;left:18px;top:14px;pointer-events:none}
+  .label{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--dimmer)}
+  .hint{position:absolute;right:16px;top:14px;font-family:var(--mono);font-size:10.5px;color:var(--dimmer);
+        text-align:right;line-height:1.7;pointer-events:none}
+  .controls{display:flex;gap:10px;align-items:flex-end;padding:10px 16px 14px;border-top:1px solid var(--line);
+            background:linear-gradient(180deg,rgba(9,11,14,.2),rgba(9,11,14,.85))}
+  .field{display:flex;flex-direction:column;gap:5px}
+  .field label{font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--dimmer)}
+  select,input,textarea{background:#0b0e12;border:1px solid var(--line);color:var(--text);border-radius:7px;
+        padding:8px 10px;font-family:var(--mono);font-size:12px;outline:none;transition:.15s}
+  select:focus,input:focus{border-color:rgba(110,240,184,.45);box-shadow:0 0 0 3px rgba(110,240,184,.08)}
+  .field.grow{flex:1;min-width:120px}
+  .field.grow input{width:100%}
+  .send{background:var(--mint);color:#04120c;border:none;border-radius:7px;padding:9px 16px;font-weight:600;
+        font-size:12px;cursor:pointer;letter-spacing:.01em;transition:.15s;white-space:nowrap}
+  .send:hover{filter:brightness(1.06)}
+  .send:active{transform:translateY(1px)}
+  .send[disabled]{opacity:.45;cursor:progress}
+
+  /* ---------------------------------------------------------- ledger */
+  .ledger{grid-area:ledger;border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0;
+          background:linear-gradient(180deg,rgba(12,15,19,.85),rgba(8,10,13,.95))}
+  .sect{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;
+        border-bottom:1px solid var(--line)}
+  .sect .label{margin:0}
+  .tally{display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid var(--line)}
+  .tally div{padding:8px 10px;border-right:1px solid var(--line)}
+  .tally div:last-child{border-right:none}
+  .tally .k{font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--dimmer)}
+  .tally .v{font-family:var(--mono);font-size:15px;margin-top:2px;font-variant-numeric:tabular-nums}
+  .rows{overflow-y:auto;flex:1;padding:6px 8px 20px}
+  .row{border:1px solid transparent;border-radius:8px;padding:9px 10px;margin:3px 0;cursor:default;
+       transition:.12s;animation:sin .28s ease-out}
+  @keyframes sin{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
+  .row:hover{background:rgba(255,255,255,.025);border-color:var(--line)}
+  .row .top{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11px;color:var(--dim)}
+  .arrow{color:var(--dimmer)}
+  .node-tag{color:var(--text)}
+  .row .body{margin-top:5px;font-size:12.5px;color:#cfdae1;line-height:1.35;word-break:break-word}
+  .row .foot{margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;
+             font-family:var(--mono);font-size:10px;color:var(--dimmer)}
+  .pill{padding:2px 6px;border-radius:5px;border:1px solid var(--line);letter-spacing:.06em;text-transform:uppercase;font-size:9px}
+  .s-queued{color:#8b98a5} .s-sent{color:var(--cyan);border-color:rgba(90,209,255,.3);background:rgba(90,209,255,.06)}
+  .s-deferred{color:var(--amber);border-color:rgba(255,180,84,.3);background:rgba(255,180,84,.07)}
+  .s-relayed{color:var(--violet);border-color:rgba(201,162,255,.3);background:rgba(201,162,255,.06)}
+  .s-delivered{color:var(--mint);border-color:rgba(110,240,184,.32);background:rgba(110,240,184,.06)}
+  .s-received{color:var(--mint);border-color:rgba(110,240,184,.45);background:rgba(110,240,184,.1)}
+  .s-failed{color:var(--red);border-color:rgba(255,107,107,.35);background:rgba(255,107,107,.07)}
+  .empty{color:var(--dimmer);text-align:center;padding:38px 20px;font-size:12px;line-height:1.7}
+  .empty code{background:rgba(255,255,255,.05);padding:2px 5px;border-radius:4px;font-family:var(--mono)}
+
+  /* ------------------------------------------------------------ feed */
+  .feed{grid-area:feed;border-top:1px solid var(--line);display:flex;flex-direction:column;min-height:0;
+        background:#080a0d}
+  .feed .sect{padding:8px 16px}
+  .feed .sect .right{display:flex;gap:8px;align-items:center}
+  .stream{overflow-y:auto;padding:4px 16px 10px;font-family:var(--mono);font-size:11px;line-height:1.85}
+  .ev{display:flex;gap:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--dim)}
+  .ev .t{color:var(--dimmer)}
+  .ev .n{color:var(--text);width:14px;flex:none}
+  .ev .ty{width:210px;flex:none;color:var(--cyan)}
+  .ev .ty.deferred{color:var(--amber)} .ev .ty.relayed{color:var(--violet)}
+  .ev .ty.received,.ev .ty.delivered{color:var(--mint)}
+  .ev .ty.discovered{color:#8b98a5}
+  .ev .d{color:var(--dim);overflow:hidden;text-overflow:ellipsis}
+
+  /* ---------------------------------------------------------- inspector */
+  .inspector{position:absolute;right:14px;bottom:14px;width:290px;background:rgba(9,12,15,.96);
+    border:1px solid var(--line-2);border-radius:10px;box-shadow:0 18px 48px rgba(0,0,0,.6);
+    padding:12px 13px;display:none}
+  .inspector.on{display:block}
+  .inspector h4{margin:0 0 8px;font-size:12px;letter-spacing:.02em;display:flex;justify-content:space-between}
+  .inspector h4 span{font-family:var(--mono);color:var(--dim);font-weight:400;font-size:10.5px}
+  .kv{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;
+      padding:3px 0;color:var(--dim);border-bottom:1px dotted rgba(255,255,255,.05)}
+  .kv b{color:var(--text);font-weight:400}
+  .actions{display:flex;gap:7px;margin-top:10px}
+  .act{flex:1;font-family:var(--mono);font-size:10.5px;padding:7px 8px;border-radius:6px;cursor:pointer;
+       background:rgba(255,255,255,.04);border:1px solid var(--line);color:var(--text);transition:.15s}
+  .act:hover{background:rgba(255,255,255,.08)}
+  .act.danger{color:var(--red);border-color:rgba(255,107,107,.3)}
+  .act.good{color:var(--mint);border-color:rgba(110,240,184,.3)}
+.credit{padding:7px 14px;font-family:var(--mono);font-size:10px;color:var(--dimmer);
+          border-top:1px solid var(--line);display:flex;gap:6px;align-items:center}
+  .credit a{color:var(--dim);text-decoration:none;border-bottom:1px dotted var(--line-2)}
+  .credit a:hover{color:var(--text)}
+  ::-webkit-scrollbar{width:8px;height:8px}
+  ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.09);border-radius:8px}
+  ::-webkit-scrollbar-track{background:transparent}
+  @media (max-width:900px){
+    .app{grid-template-columns:1fr;grid-template-rows:52px 1fr 210px;grid-template-areas:"head" "stage" "ledger"}
+    .feed{display:none}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand"><span class="mark"></span><b>meshbench</b><span>devnet</span></div>
+    <div class="meta">
+      <span class="chip" id="c-topo">topology <b>—</b></span>
+      <span class="chip" id="c-nodes">nodes <b>—</b></span>
+      <span class="chip" id="c-sdk">sdk <b>—</b></span>
+      <span class="chip live" id="c-live"><span class="dot"></span><span id="live-txt">connecting</span></span>
+    </div>
+    <div class="spacer"></div>
+    <span class="chip" id="c-home" style="max-width:280px;overflow:hidden;text-overflow:ellipsis">—</span>
+    <button class="ghost" id="copy-mcp">copy MCP config</button>
+  </header>
+
+  <section class="stage">
+    <canvas id="topo"></canvas>
+    <div class="overlay">
+      <div class="label">mesh topology · live</div>
+    </div>
+    <div class="hint">click node → inspect · click link → cut<br/>packets animate per protocol event</div>
+    <div class="inspector" id="inspector"></div>
+    <div class="controls">
+      <div class="field"><label>from</label><select id="from"></select></div>
+      <div class="field"><label>to</label><select id="to"></select></div>
+      <div class="field grow"><label>payload</label><input id="content" placeholder="ping across the mesh" autocomplete="off"/></div>
+      <div class="field"><label>priority</label>
+        <select id="priority"><option>Low</option><option selected>Medium</option><option>High</option><option>Critical</option></select>
+      </div>
+      <button class="send" id="send">Send</button>
+    </div>
+  </section>
+
+  <aside class="ledger">
+    <div class="sect"><div class="label">message ledger</div><span class="chip" id="ledger-count">0</span></div>
+    <div class="tally">
+      <div><div class="k">delivered</div><div class="v" id="t-delivered" style="color:var(--mint)">0</div></div>
+      <div><div class="k">deferred</div><div class="v" id="t-deferred" style="color:var(--amber)">0</div></div>
+      <div><div class="k">max hops</div><div class="v" id="t-hops">0</div></div>
+      <div><div class="k">med. rtt</div><div class="v" id="t-lat">—</div></div>
+    </div>
+    <div class="rows" id="rows">
+      <div class="empty">No messages yet.<br/>Send one above, or run<br/><code>meshbench demo</code></div>
+    </div>
+  </aside>
+
+  <section class="feed">
+    <div class="sect"><div class="label">event stream · local api</div>
+      <div class="right"><button class="ghost" id="toggle-noise">hide discovery</button></div>
+    </div>
+    <div class="stream" id="stream"></div>
+    <div class="credit">built by <a href="https://harishkotra.me" target="_blank" rel="noopener">Harish Kotra</a>
+      <span>·</span> <a href="https://dailybuild.xyz" target="_blank" rel="noopener">checkout my other builds</a></div>
+  </section>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const state = { devnet:null, nodes:[], edges:[], messages:[], events:[], stats:{} };
+  let packets = [];
+  let selected = null;          // {kind:'node'|'edge', id}
+  let hideNoise = true;
+  let canvas, ctx, dpr = 1, boxes = new Map();
+
+  // ------------------------------------------------------------- transport
+  function connect() {
+    const es = new EventSource('/api/stream');
+    es.addEventListener('snapshot', (ev) => {
+      try { Object.assign(state, JSON.parse(ev.data)); } catch(e) { return; }
+      $('live-txt').textContent = 'live';
+      render();
+    });
+    es.addEventListener('packet', (ev) => {
+      try { onPacket(JSON.parse(ev.data)); } catch(e) {}
+    });
+    es.onerror = () => { $('live-txt').textContent = 'reconnecting'; };
+  }
+
+  // --------------------------------------------------------------- helpers
+  const nodeById = (id) => state.nodes.find(n => n.id === id);
+  const esc = (s) => (s ?? '').toString().replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const shortAddr = (a) => a ? a.slice(0,4) + '…' + a.slice(-6) : '—';
+  const fmtLat = (ms) => ms ? (ms >= 1000 ? (ms/1000).toFixed(2)+'s' : ms+'ms') : '—';
+  const time = (t) => new Date((t||Date.now()/1000)*1000).toLocaleTimeString('en-GB',{hour12:false});
+
+  function pathBetween(a, b) {
+    if (a === b) return [a];
+    const adj = new Map();
+    state.edges.filter(e => e.state === 'up').forEach(e => {
+      if (!adj.has(e.source)) adj.set(e.source, []);
+      if (!adj.has(e.target)) adj.set(e.target, []);
+      adj.get(e.source).push(e.target); adj.get(e.target).push(e.source);
+    });
+    const prev = new Map([[a, null]]); const q = [a];
+    while (q.length) {
+      const cur = q.shift();
+      if (cur === b) break;
+      for (const nxt of (adj.get(cur) || [])) if (!prev.has(nxt)) { prev.set(nxt, cur); q.push(nxt); }
+    }
+    if (!prev.has(b)) return [a, b];
+    const out = []; let cur = b;
+    while (cur !== null && cur !== undefined) { out.unshift(cur); cur = prev.get(cur); }
+    return out;
+  }
+
+  // ------------------------------------------------------------- rendering
+  function render() {
+    // Node positions live in the layout cache, which is built from state.nodes.
+    // Rebuild it on every state refresh: the first render happens before any
+    // state exists, and nodes can be added/restarted at runtime.
+    layout();
+    $('c-topo').innerHTML = 'topology <b>' + esc(state.devnet?.topology || '—') + '</b>';
+    $('c-nodes').innerHTML = 'nodes <b>' + (state.nodes?.length || 0) + '</b>';
+    $('c-sdk').innerHTML = 'sdk <b>' + esc(state.devnet?.sdk_version || state.devnet?.sdk || '0.33.0') + '</b>';
+    $('c-home').textContent = state.devnet?.home || '';
+    $('c-live').classList.toggle('live', true);
+
+    const s = state.stats || {};
+    $('t-delivered').textContent = s.delivered ?? 0;
+    $('t-deferred').textContent = s.deferred ?? 0;
+    $('t-hops').textContent = s.max_hops ?? 0;
+    $('t-lat').textContent = s.median_latency_ms ? fmtLat(s.median_latency_ms) : '—';
+    $('ledger-count').textContent = (s.messages ?? 0) + ' msgs';
+
+    syncSelects();
+    renderLedger();
+    renderFeed();
+    if (selected) renderInspector();
+    draw();
+  }
+
+  function syncSelects() {
+    for (const [id, list] of [['from', state.nodes], ['to', state.nodes]]) {
+      const el = $(id); const want = el.value;
+      if (el.dataset.sig === state.nodes.map(n => n.id).join(',')) continue;
+      el.innerHTML = state.nodes.map(n => `<option value="${n.id}" ${!n.running?'disabled':''}>${n.id}${n.running?'':' · down'}</option>`).join('');
+      el.dataset.sig = state.nodes.map(n => n.id).join(',');
+      if (want && [...el.options].some(o => o.value === want)) el.value = want;
+    }
+    if (!('to' in $('to').dataset) && state.nodes.length > 1) {
+      $('to').value = state.nodes[state.nodes.length - 1].id;
+      $('to').dataset.init = '1';
+    }
+    if (!('from' in $('from').dataset) && state.nodes.length) $('from').dataset.init = '1';
+  }
+
+  function stateLabel(m) {
+    if (m.state === 'received') return 'accepted';
+    return m.state;
+  }
+
+  function renderLedger() {
+    const rows = state.messages || [];
+    if (!rows.length) return;
+    const html = rows.map(m => {
+      const hop = (m.state === 'delivered' || m.state === 'received') ? (m.hops ? m.hops + (m.hops === 1 ? ' hop' : ' hops') : 'direct') : '';
+      const relay = m.relays?.length ? `via ${m.relays.join(' → ')}` : '';
+      const rtt = m.latency_ms ? fmtLat(m.latency_ms) : '';
+      return `<div class="row">
+        <div class="top"><span class="node-tag">${esc(m.from_node || '?')}</span><span class="arrow">→</span>
+          <span class="node-tag">${esc(m.to_node || '?')}</span>
+          <span style="margin-left:auto" class="pill s-${m.state}">${stateLabel(m)}</span></div>
+        <div class="body">${esc(m.content || '(no payload)')}</div>
+        <div class="foot">
+          ${hop ? `<span>${hop}</span>` : ''}${rtt ? `<span>· ${rtt} rtt</span>` : ''}
+          ${relay ? `<span>· ${relay}</span>` : ''}
+          ${m.priority ? `<span>· ${esc(String(m.priority).toLowerCase())}</span>` : ''}
+          ${m.deferrals ? `<span style="color:var(--amber)">· ${m.deferrals}× deferred</span>` : ''}
+        </div></div>`;
+    }).join('');
+    $('rows').innerHTML = html;
+  }
+
+  function renderFeed() {
+    const evs = (state.events || []).filter(e => !hideNoise || !['neighbor_discovered','neighbor_lost'].includes(e.type));
+    $('stream').innerHTML = evs.slice().reverse().map(e => {
+      const cls = e.type.replace('message_','');
+      const detail = [
+        e.sender_node || e.node, e.recipient_node ? '→ ' + e.recipient_node : '',
+        e.hop_count ? `hop ${e.hop_count}` : '', e.latency_ms ? fmtLat(e.latency_ms) : '',
+        e.reason || '', e.preview ? JSON.stringify(e.preview).slice(0,70) : ''
+      ].filter(Boolean).join('  ');
+      return `<div class="ev"><span class="t">${time(e.ts)}</span><span class="n">${esc(e.node)}</span>
+        <span class="ty ${cls}">${esc(e.type)}</span><span class="d">${esc(detail)}</span></div>`;
+    }).join('');
+  }
+
+  function renderInspector() {
+    const box = $('inspector');
+    if (selected.kind === 'node') {
+      const n = nodeById(selected.id); if (!n) return;
+      const m = n.metrics || {};
+      const relay = m.relay ? `fwd ${m.relay.forwarded ?? 0} · dup ${m.relay.duplicates_suppressed ?? 0}` : '—';
+      box.innerHTML = `<h4>node ${esc(n.id)} <span>${shortAddr(n.address)}</span></h4>
+        <div class="kv"><span>status</span><b style="color:${n.running ? 'var(--mint)' : 'var(--red)'}">${n.running ? 'running' : 'stopped'}</b></div>
+        <div class="kv"><span>address</span><b>${esc(n.address || '—')}</b></div>
+        <div class="kv"><span>mls sessions</span><b>${m.sessions ?? 0}</b></div>
+        <div class="kv"><span>neighbors</span><b>${(n.neighbors||[]).join(', ') || '—'}</b></div>
+        <div class="kv"><span>retry queue</span><b>${m.retry_queue ?? 0}</b></div>
+        <div class="kv"><span>relay</span><b>${relay}</b></div>
+        <div class="kv"><span>restarts</span><b>${n.restarts ?? 0}</b></div>
+        <div class="actions">
+          ${n.running ? `<button class="act danger" data-act="stop-node">Stop node</button>`
+                     : `<button class="act good" data-act="start-node">Start node</button>`}
+          <button class="act" data-act="close">Close</button>
+        </div>`;
+    } else {
+      const e = state.edges.find(x => x.id === selected.id); if (!e) return;
+      box.innerHTML = `<h4>link ${esc(e.source)} ↔ ${esc(e.target)} <span>${e.state}</span></h4>
+        <div class="kv"><span>direction</span><b>${esc(e.source)} → ${esc(e.target)}</b></div>
+        <div class="kv"><span>state</span><b style="color:${e.state === 'up' ? 'var(--mint)' : 'var(--red)'}">${e.state}</b></div>
+        <div class="actions">
+          ${e.state === 'up' ? `<button class="act danger" data-act="cut-edge">Cut link</button>`
+                            : `<button class="act good" data-act="restore-edge">Restore link</button>`}
+          <button class="act" data-act="close">Close</button>
+        </div>`;
+    }
+    box.classList.add('on');
+  }
+
+  // ------------------------------------------------------------- topology
+  function layout() {
+    canvas = $('topo');
+    const rect = canvas.getBoundingClientRect();
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.max(1, Math.floor(rect.width * dpr));
+    canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+    ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    boxes = new Map();
+    const pad = 74;
+    for (const n of state.nodes) {
+      boxes.set(n.id, {
+        x: pad + n.position.x * (rect.width - pad * 2),
+        y: pad + n.position.y * (rect.height - pad * 2) - 8,
+        r: 26
+      });
+    }
+    return rect;
+  }
+
+  function draw() {
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    ctx.clearRect(0, 0, rect.width, rect.height);
+
+    // dot grid
+    ctx.fillStyle = 'rgba(255,255,255,.045)';
+    for (let x = 22; x < rect.width; x += 26) for (let y = 22; y < rect.height; y += 26) {
+      ctx.fillRect(x, y, 1, 1);
+    }
+
+    // edges
+    for (const e of state.edges) {
+      const a = boxes.get(e.source), b = boxes.get(e.target);
+      if (!a || !b) continue;
+      const cut = e.state !== 'up';
+      ctx.save();
+      ctx.strokeStyle = cut ? 'rgba(255,107,107,.5)' : 'rgba(110,240,184,.20)';
+      ctx.lineWidth = cut ? 1 : 1.4;
+      ctx.setLineDash(cut ? [4, 6] : []);
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+      ctx.restore();
+      if (selected?.kind === 'edge' && selected.id === e.id) {
+        ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+      }
+      if (cut) {
+        const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+        ctx.fillStyle = 'rgba(255,107,107,.85)'; ctx.font = '9px var(--mono, monospace)';
+        ctx.textAlign = 'center'; ctx.fillText('CUT', mx, my - 6);
+      }
+    }
+
+    // packets
+    const now = performance.now();
+    packets = packets.filter(p => now - p.t0 < p.dur);
+    for (const p of packets) {
+      const t = (now - p.t0) / p.dur;
+      const seg = Math.min(p.pts.length - 1, Math.floor(t * (p.pts.length - 1)));
+      const local = t * (p.pts.length - 1) - seg;
+      const a = p.pts[seg], b = p.pts[seg + 1] || p.pts[seg];
+      if (!a || !b) continue;
+      const x = a.x + (b.x - a.x) * local, y = a.y + (b.y - a.y) * local;
+      const fade = 1 - Math.max(0, t - 0.8) / 0.2;
+      ctx.globalAlpha = Math.max(0, Math.min(1, fade));
+      const g = ctx.createRadialGradient(x, y, 0, x, y, 12);
+      g.addColorStop(0, p.color); g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, 12, 0, 7); ctx.fill();
+      ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(x, y, 3.2, 0, 7); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
+    // nodes
+    for (const n of state.nodes) {
+      const b = boxes.get(n.id); if (!b) continue;
+      const down = !n.running;
+      const isSel = selected?.kind === 'node' && selected.id === n.id;
+      ctx.save();
+      if (!down) {
+        const glow = ctx.createRadialGradient(b.x, b.y, 4, b.x, b.y, 54);
+        glow.addColorStop(0, 'rgba(110,240,184,.13)'); glow.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(b.x, b.y, 54, 0, 7); ctx.fill();
+      }
+      ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, 7);
+      ctx.fillStyle = down ? 'rgba(255,107,107,.06)' : 'rgba(12,20,18,.92)';
+      ctx.fill();
+      ctx.lineWidth = isSel ? 2 : 1.3;
+      ctx.strokeStyle = down ? 'rgba(255,107,107,.6)' : 'rgba(110,240,184,.65)';
+      ctx.stroke();
+      ctx.fillStyle = down ? 'var(--red,#ff6b6b)' : '#eaf6f1';
+      ctx.font = '600 15px -apple-system, system-ui, sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(n.id, b.x, b.y - 1);
+      ctx.fillStyle = 'rgba(125,139,150,.95)';
+      ctx.font = '9px ui-monospace, Menlo, monospace';
+      ctx.fillText(n.short || '—', b.x, b.y + b.r + 13);
+      ctx.restore();
+    }
+  }
+
+  function onPacket(ev) {
+    const from = ev.sender_node, to = ev.recipient_node;
+    if (!from || !to) return;
+    let pts;
+    if (ev.hop_count > 0) {
+      const path = pathBetween(from, to);
+      pts = path.map(id => boxes.get(id)).filter(Boolean);
+    } else {
+      pts = [boxes.get(from), boxes.get(to)].filter(Boolean);
+    }
+    if (pts.length < 2) return;
+    const color = ev.type === 'message_delivered' ? '#6ef0b8'
+                : ev.type === 'message_relayed' ? '#c9a2ff'
+                : ev.type === 'message_deferred' ? '#ffb454' : '#5ad1ff';
+    packets.push({ pts, t0: performance.now(), dur: 820, color });
+    requestAnimationFrame(draw);
+  }
+
+  // -------------------------------------------------------------- actions
+  async function post(url, body) {
+    const res = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'},
+                                  body: body ? JSON.stringify(body) : '{}' });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(json.error || res.statusText);
+    return json;
+  }
+
+  async function send() {
+    const btn = $('send'); btn.disabled = true;
+    try {
+      await post('/api/send', { from: $('from').value, to: $('to').value,
+        content: $('content').value || 'ping ' + Date.now(), priority: $('priority').value });
+      $('content').value = '';
+    } catch (e) { console.error(e); }
+    btn.disabled = false;
+  }
+
+  $('send').onclick = send;
+  $('content').addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
+  $('toggle-noise').onclick = () => { hideNoise = !hideNoise;
+    $('toggle-noise').textContent = hideNoise ? 'hide discovery' : 'show discovery'; renderFeed(); };
+  $('copy-mcp').onclick = async () => {
+    const cmd = ['meshbench', 'mcp', '--home', state.devnet?.home || '.meshbench'];
+    const cfg = { mcpServers: { meshbench: { command: cmd[0], args: cmd.slice(1) } } };
+    try { await navigator.clipboard.writeText(JSON.stringify(cfg, null, 2));
+      $('copy-mcp').textContent = 'copied'; setTimeout(() => $('copy-mcp').textContent = 'copy MCP config', 1400);
+    } catch(e) {}
+  };
+
+  $('topo').addEventListener('click', (ev) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = ev.clientX - rect.left, y = ev.clientY - rect.top;
+    for (const [id, b] of boxes) {
+      if (Math.hypot(x - b.x, y - b.y) <= b.r + 6) { selected = { kind:'node', id }; renderInspector(); draw(); return; }
+    }
+    let best = null;
+    for (const e of state.edges) {
+      const a = boxes.get(e.source), b = boxes.get(e.target); if (!a || !b) continue;
+      const d = distToSeg(x, y, a, b);
+      if (d < 12 && (!best || d < best.d)) best = { e, d };
+    }
+    selected = best ? { kind:'edge', id: best.e.id } : null;
+    if (selected) renderInspector(); else $('inspector').classList.remove('on');
+    draw();
+  });
+
+  function distToSeg(px, py, a, b) {
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const t = Math.max(0, Math.min(1, ((px - a.x) * dx + (py - a.y) * dy) / (dx*dx + dy*dy || 1)));
+    return Math.hypot(px - (a.x + t*dx), py - (a.y + t*dy));
+  }
+
+  $('inspector').addEventListener('click', async (ev) => {
+    const act = ev.target.dataset?.act; if (!act) return;
+    const id = selected?.id;
+    try {
+      if (act === 'close') { $('inspector').classList.remove('on'); selected = null; draw(); return; }
+      if (act === 'stop-node') await post(`/api/nodes/${id}/stop`);
+      if (act === 'start-node') await post(`/api/nodes/${id}/start`);
+      if (act === 'cut-edge') await post(`/api/edges/${encodeURIComponent(id)}/cut`);
+      if (act === 'restore-edge') await post(`/api/edges/${encodeURIComponent(id)}/restore`);
+    } catch (e) { console.error(e); }
+  });
+
+  window.addEventListener('resize', () => { layout(); draw(); });
+  layout();
+  fetch('/api/state').then(r => r.json()).then(s => { Object.assign(state, s); render(); });
+  connect();
+  setInterval(() => { document.querySelectorAll('.ev').length && renderFeed(); }, 4000);
+})();
+</script>
+</body>
+</html>

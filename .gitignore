@@ -1,0 +1,58 @@
+# --- Python ---------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+build/
+dist/
+*.egg-info/
+.eggs/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# --- Virtualenvs ----------------------------------------------------------
+.venv/
+venv/
+env/
+ENV/
+
+# --- Meshbench runtime state (contains secrets) ---------------------------
+# Every node dir holds a local API token; store.key is the SDK store key.
+# Never commit a devnet home (.meshbench/ or any --home target).
+.meshbench/
+**/nodes/*/token
+**/nodes/*/mls/
+**/nodes/*/state/
+store.key
+runtime.json
+**.log
+
+# --- Secrets --------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# --- Editors and OS -------------------------------------------------------
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.vim/
+
+# --- Local scratch --------------------------------------------------------
+scratch/
+*.tmp
+*.bak
