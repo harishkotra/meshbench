@@ -491,5 +491,3 @@ both were found by running the demo, not by reading it.
 ## License
 
 AGPL-3.0-only, matching the Offline Protocol SDK's license.
-
-<sub>Built by [Harish Kotra](https://harishkotra.me) · [Checkout my other builds](https://dailybuild.xyz)</sub>
